@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useCallback } from "react";
+import { useEffect, useRef, useCallback, useState } from "react";
 import { motion } from "framer-motion";
 import dynamic from "next/dynamic";
 import TerminalText from "@/components/ui/TerminalText";
@@ -53,7 +53,15 @@ interface HeroSectionProps {
 }
 
 export default function HeroSection({ scrollProgress }: HeroSectionProps) {
+  const [isMounted, setIsMounted] = useState(false);
   const { onSceneLoad } = useUnicornScrollBinding(scrollProgress);
+
+  // Mount guard: only render UnicornScene after hydration is complete.
+  // Even with dynamic({ ssr: false }), next/script inside UnicornScene can
+  // throw during the hydration phase. This ensures it's purely client-side.
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
 
   return (
     <section
@@ -66,19 +74,21 @@ export default function HeroSection({ scrollProgress }: HeroSectionProps) {
         aria-hidden="true"
         style={{ pointerEvents: "none" }}
       >
-        <UnicornScene
-          projectId={UNICORN_PROJECT_ID}
-          width="100%"
-          height="100%"
-          fps={60}
-          scale={1}
-          dpi={1.5}
-          production={true}
-          lazyLoad={false}
-          className="w-full h-full"
-          onLoad={onSceneLoad}
-          altText="Living Vessel — interactive generative scene"
-        />
+        {isMounted && (
+          <UnicornScene
+            projectId={UNICORN_PROJECT_ID}
+            width="100%"
+            height="100%"
+            fps={60}
+            scale={1}
+            dpi={1.5}
+            production={true}
+            lazyLoad={false}
+            className="w-full h-full"
+            onLoad={onSceneLoad}
+            altText="Living Vessel — interactive generative scene"
+          />
+        )}
       </div>
 
       {/* ── Vignette overlay so terminal text stays legible ── */}
