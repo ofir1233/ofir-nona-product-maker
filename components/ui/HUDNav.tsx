@@ -7,6 +7,7 @@ const SECTIONS = [
   { id: "hero", label: "Void", index: "01" },
   { id: "extraction", label: "Extraction", index: "02" },
   { id: "blueprint", label: "Blueprint", index: "03" },
+  { id: "experience", label: "Experience", index: "04" },
 ];
 
 export default function HUDNav() {

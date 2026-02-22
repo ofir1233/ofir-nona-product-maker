@@ -7,6 +7,7 @@ import SmoothScrollProvider from "@/components/providers/SmoothScrollProvider";
 import HeroSection from "@/components/sections/HeroSection";
 import ExtractionSection from "@/components/sections/ExtractionSection";
 import BlueprintSection from "@/components/sections/BlueprintSection";
+import ExperienceTeaserSection from "@/components/sections/ExperienceTeaserSection";
 import HUDNav from "@/components/ui/HUDNav";
 import ErrorBoundary from "@/components/ui/ErrorBoundary";
 
@@ -53,6 +54,7 @@ export default function Home() {
 
         <ExtractionSection />
         <BlueprintSection />
+        <ExperienceTeaserSection />
       </main>
     </SmoothScrollProvider>
   );
