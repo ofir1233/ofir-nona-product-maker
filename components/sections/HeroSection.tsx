@@ -1,150 +1,289 @@
 "use client";
 
-import { useEffect, useRef, useCallback, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
-import dynamic from "next/dynamic";
 import TerminalText from "@/components/ui/TerminalText";
 
-// Unicorn Studio is browser-only — SSR disabled.
-const UnicornScene = dynamic(
-  () =>
-    import("unicornstudio-react/next").then((m) => ({ default: m.UnicornScene })),
-  { ssr: false, loading: () => null }
-);
+// ─── Config ──────────────────────────────────────────────────────────────────
 
-// Prefer env var; fallback keeps the Vercel build working without it.
-const UNICORN_PROJECT_ID =
+const PROJECT_ID =
   process.env.NEXT_PUBLIC_UNICORN_SCENE_ID ?? "4spOUVtR0qgdSv9wMwPH";
 
-// Minimal types for the UnicornStudio JS global
-interface USScene {
+// Versioned CDN URL — pinned to match unicornstudio-react v2.0.1-1
+const SDK_URL =
+  "https://cdn.jsdelivr.net/gh/hiunicornstudio/unicornstudio.js@v2.0.1/dist/unicornStudio.umd.js";
+
+// Stable DOM element ID the SDK renders the canvas into
+const CANVAS_ELEMENT_ID = "unicorn-hero-canvas";
+
+const MAX_RETRIES = 3;
+const RETRY_BASE_MS = 1500; // 1.5 s → 3 s → 6 s (exponential)
+
+// ─── Types ───────────────────────────────────────────────────────────────────
+
+// Lifecycle handle returned by addScene() — typed from the SDK's d.ts
+interface USLifecycle {
+  destroy: () => void;
+  resize?: () => void;
+}
+
+// Internal data-layer handle returned by getScene() — undocumented but stable
+interface USDataLayer {
   updateVariable?: (key: string, value: number) => void;
 }
-interface USGlobal {
-  getScene?: (id: string) => USScene | null | undefined;
+
+interface UnicornStudioGlobal {
+  addScene: (cfg: Record<string, unknown>) => Promise<USLifecycle>;
+  getScene?: (id: string) => USDataLayer | null | undefined;
 }
+
+// ─── SDK loader ──────────────────────────────────────────────────────────────
 
 /**
- * Drives the Unicorn Studio "scrollY" data-layer variable (0 → 1).
- *
- * Design goals:
- *  - Zero React state updates — scroll events never trigger re-renders.
- *  - RAF-throttled writes — at most one SDK call per animation frame (60fps).
- *  - Race-condition safe — if the user is already scrolled when the scene
- *    finishes loading, the current position is applied immediately.
+ * Injects the Unicorn Studio UMD script into <head> exactly once.
+ * If it has already been injected (or already ran), resolves immediately.
+ * Using useEffect script injection instead of next/script to guarantee
+ * the onLoad callback fires AFTER window.UnicornStudio is fully initialised.
  */
-function useUnicornScrollBinding() {
-  const sceneRef   = useRef<USScene | null>(null);
-  const rafRef     = useRef<number | null>(null);
-  const pendingRef = useRef(0); // latest scroll (0–1); flushed on next RAF or load
+function loadSDK(): Promise<void> {
+  const w = window as Window & { UnicornStudio?: UnicornStudioGlobal };
 
-  // Schedule one RAF write per animation frame; skip if already queued.
-  const push = useCallback((progress: number) => {
-    pendingRef.current = progress;
-    if (!sceneRef.current?.updateVariable) return;
-    if (rafRef.current !== null) return;
-    rafRef.current = requestAnimationFrame(() => {
-      rafRef.current = null;
-      sceneRef.current?.updateVariable?.("scrollY", pendingRef.current);
-    });
-  }, []);
+  // Fast path — SDK already on the page
+  if (w.UnicornStudio?.addScene) return Promise.resolve();
 
-  // onLoad fires once the SDK has initialised the scene.
-  // Capture the scene reference and flush any accumulated scroll position.
-  const onSceneLoad = useCallback(() => {
-    try {
-      const us = (window as Window & { UnicornStudio?: USGlobal }).UnicornStudio;
-      const scene = us?.getScene?.(UNICORN_PROJECT_ID) ?? null;
-      sceneRef.current = scene;
-      // Fix race condition: apply whatever scroll value arrived before load.
-      scene?.updateVariable?.("scrollY", pendingRef.current);
-    } catch {
-      // Progressive enhancement — scroll binding failing is non-fatal.
+  return new Promise((resolve, reject) => {
+    // Reuse an in-flight tag if one already exists (e.g. HMR)
+    let tag = document.querySelector<HTMLScriptElement>("[data-us-sdk]");
+
+    if (!tag) {
+      tag = document.createElement("script");
+      tag.src = SDK_URL;
+      tag.async = true;
+      tag.setAttribute("data-us-sdk", "");
+      document.head.appendChild(tag);
     }
-  }, []);
 
-  // Passive scroll listener. No React state, no re-renders, full 60fps.
-  useEffect(() => {
-    const handleScroll = () => {
-      const scrollable =
-        document.documentElement.scrollHeight - window.innerHeight;
-      const progress =
-        scrollable > 0
-          ? Math.min(1, Math.max(0, window.scrollY / scrollable))
-          : 0;
-      push(progress);
+    const onLoad = () => {
+      cleanup();
+      // Double-check the global was actually set by the script
+      if ((window as Window & { UnicornStudio?: UnicornStudioGlobal }).UnicornStudio?.addScene) {
+        resolve();
+      } else {
+        reject(new Error("SDK loaded but window.UnicornStudio.addScene is missing"));
+      }
+    };
+    const onError = () => {
+      cleanup();
+      reject(new Error("UnicornStudio SDK script failed to load from CDN"));
+    };
+    const cleanup = () => {
+      tag!.removeEventListener("load", onLoad);
+      tag!.removeEventListener("error", onError);
     };
 
-    window.addEventListener("scroll", handleScroll, { passive: true });
-
-    return () => {
-      window.removeEventListener("scroll", handleScroll);
-      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
-    };
-  }, [push]);
-
-  return { onSceneLoad };
+    tag.addEventListener("load", onLoad);
+    tag.addEventListener("error", onError);
+  });
 }
 
-// ─── Component ──────────────────────────────────────────────────────────────
+// ─── Scene initialiser ───────────────────────────────────────────────────────
+
+/**
+ * Calls window.UnicornStudio.addScene() with the given production flag.
+ * Returns the lifecycle handle on success, throws on failure.
+ *
+ * We try production: true first (published scene), then fall back to
+ * production: false (draft/development scene). This covers the common
+ * case where the scene exists but has not yet been deployed in the
+ * Unicorn Studio editor.
+ */
+async function mountScene(
+  elementId: string,
+  projectId: string,
+  productionMode: boolean
+): Promise<USLifecycle> {
+  const us = (window as Window & { UnicornStudio?: UnicornStudioGlobal })
+    .UnicornStudio;
+  if (!us?.addScene) throw new Error("UnicornStudio.addScene is unavailable");
+
+  return us.addScene({
+    elementId,
+    projectId,
+    scale: 1,
+    dpi: 1.5,
+    fps: 60,
+    production: productionMode,
+    lazyLoad: false,
+  });
+}
+
+// ─── Component ───────────────────────────────────────────────────────────────
 
 export default function HeroSection() {
-  const [isMounted, setIsMounted] = useState(false);
-  const { onSceneLoad } = useUnicornScrollBinding();
+  const canvasRef    = useRef<HTMLDivElement>(null);
+  const lifecycleRef = useRef<USLifecycle | null>(null); // addScene() handle → destroy
+  const dataRef      = useRef<USDataLayer | null>(null);  // getScene() handle → updateVariable
+  const rafRef       = useRef<number | null>(null);
+  const scrollRef    = useRef(0);  // latest scroll progress (0–1)
+  const aliveRef     = useRef(true);
 
-  // Mount guard: render UnicornScene only after hydration is complete.
-  // next/script inside UnicornScene can throw during the hydration phase;
-  // this ensures it is purely client-side before it enters the tree.
+  const [isMounted, setIsMounted] = useState(false);
+
+  // ── 1. Mount guard — renders nothing until hydration completes ─────────────
   useEffect(() => {
     setIsMounted(true);
   }, []);
+
+  // ── 2. SDK load + scene init (with retry + production fallback) ────────────
+  useEffect(() => {
+    if (!isMounted) return;
+
+    aliveRef.current = true;
+    let retries = 0;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const attempt = async () => {
+      if (!aliveRef.current || !canvasRef.current) return;
+
+      // Ensure the container has the stable ID the SDK will populate
+      canvasRef.current.id = CANVAS_ELEMENT_ID;
+
+      try {
+        // Step 1: load SDK (no-op if already on page)
+        await loadSDK();
+        if (!aliveRef.current) return;
+
+        // Step 2: try published scene first, then draft fallback
+        let lifecycle: USLifecycle;
+        try {
+          lifecycle = await mountScene(CANVAS_ELEMENT_ID, PROJECT_ID, true);
+        } catch (prodErr) {
+          if (!aliveRef.current) return;
+          if (process.env.NODE_ENV !== "production") {
+            console.warn(
+              "[UnicornScene] production mode failed, trying development mode:",
+              prodErr instanceof Error ? prodErr.message : prodErr
+            );
+          }
+          lifecycle = await mountScene(CANVAS_ELEMENT_ID, PROJECT_ID, false);
+        }
+
+        if (!aliveRef.current) {
+          lifecycle.destroy();
+          return;
+        }
+
+        // Step 3: store lifecycle handle and capture data-layer handle
+        lifecycleRef.current = lifecycle;
+
+        const us = (window as Window & { UnicornStudio?: UnicornStudioGlobal })
+          .UnicornStudio;
+        dataRef.current = us?.getScene?.(PROJECT_ID) ?? null;
+
+        // Flush any scroll that accumulated while the SDK was loading
+        dataRef.current?.updateVariable?.("scrollY", scrollRef.current);
+
+        if (process.env.NODE_ENV !== "production") {
+          console.info(
+            `[UnicornScene] ✓ scene mounted — project: ${PROJECT_ID}`
+          );
+        }
+      } catch (err) {
+        if (!aliveRef.current) return;
+
+        const msg = err instanceof Error ? err.message : String(err);
+
+        if (retries < MAX_RETRIES) {
+          const delay = RETRY_BASE_MS * Math.pow(2, retries);
+          retries++;
+          if (process.env.NODE_ENV !== "production") {
+            console.warn(
+              `[UnicornScene] attempt ${retries}/${MAX_RETRIES} failed: ${msg}` +
+              ` — retrying in ${delay}ms`
+            );
+          }
+          retryTimer = setTimeout(attempt, delay);
+        } else if (process.env.NODE_ENV !== "production") {
+          console.error(
+            `[UnicornScene] all ${MAX_RETRIES} retries exhausted.`,
+            "\nProject ID:", PROJECT_ID,
+            "\nLast error:", msg,
+            "\nCheck: (1) scene is published in Unicorn Studio, " +
+            "(2) project ID matches the embed code, " +
+            "(3) network is reachable from the browser."
+          );
+        }
+      }
+    };
+
+    // 200 ms breathing room for the page to finish hydrating
+    // before the first network fetch goes out.
+    const kickoff = setTimeout(attempt, 200);
+
+    return () => {
+      aliveRef.current = false;
+      clearTimeout(kickoff);
+      if (retryTimer) clearTimeout(retryTimer);
+      lifecycleRef.current?.destroy();
+      lifecycleRef.current = null;
+      dataRef.current = null;
+      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+    };
+  }, [isMounted]);
+
+  // ── 3. Scroll → "scrollY" variable binding ────────────────────────────────
+  // Pure DOM listener + RAF — zero React state updates, full 60 fps.
+  // Drives the fluid-motion → structured-grid shader transition (0 → 1).
+  useEffect(() => {
+    if (!isMounted) return;
+
+    const onScroll = () => {
+      const scrollable =
+        document.documentElement.scrollHeight - window.innerHeight;
+      scrollRef.current =
+        scrollable > 0 ? Math.min(1, Math.max(0, window.scrollY / scrollable)) : 0;
+
+      if (!dataRef.current?.updateVariable) return;
+      if (rafRef.current !== null) return; // already queued for this frame
+
+      rafRef.current = requestAnimationFrame(() => {
+        rafRef.current = null;
+        dataRef.current?.updateVariable?.("scrollY", scrollRef.current);
+      });
+    };
+
+    window.addEventListener("scroll", onScroll, { passive: true });
+
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+    };
+  }, [isMounted]);
+
+  // ─────────────────────────────────────────────────────────────────────────
 
   return (
     <section
       id="hero"
       className="relative min-h-screen flex items-center justify-center overflow-hidden"
     >
-      {/* ── Unicorn Studio full-bleed background ─────────────────────────── */}
+      {/* ── Unicorn Studio canvas container ──────────────────────────────── */}
       {/*
-       * Absolutely fills the section (inset-0). UnicornScene inherits 100%/100%
-       * from its container so it is always fully responsive.
-       * pointer-events: none ensures it never intercepts clicks/scroll.
+       * Empty div on the server. After mount the SDK populates it with a
+       * full-screen <canvas>. absolute inset-0 makes it fill the section;
+       * pointer-events: none keeps all scroll/click events flowing to the
+       * content layers above it.
        */}
-      <div
-        className="absolute inset-0 z-0"
-        aria-hidden="true"
-        style={{ pointerEvents: "none" }}
-      >
-        {isMounted && (
-          <UnicornScene
-            projectId={UNICORN_PROJECT_ID}
-            width="100%"
-            height="100%"
-            fps={60}
-            scale={1}
-            dpi={1.5}
-            production={true}
-            lazyLoad={false}
-            className="w-full h-full"
-            onLoad={onSceneLoad}
-            onError={(err) => {
-              // Surface SDK errors in dev so they are diagnosable in DevTools.
-              // In production the scene simply doesn't render; the void-black
-              // background and all hero content remain fully intact.
-              if (process.env.NODE_ENV !== "production") {
-                console.warn("[UnicornScene] failed to load:", err.message);
-              }
-            }}
-            // Replaces the SDK's built-in pink error card when load fails.
-            // showPlaceholderOnError defaults to true; the transparent div
-            // means failure is visually silent (void background stays).
-            placeholder={<div aria-hidden="true" style={{ display: "none" }} />}
-            altText="Living Vessel — interactive generative scene"
-          />
-        )}
-      </div>
+      {isMounted && (
+        <div
+          ref={canvasRef}
+          className="absolute inset-0 z-0 w-full h-full"
+          aria-hidden="true"
+          style={{ pointerEvents: "none" }}
+        />
+      )}
 
-      {/* ── Vignette overlay ─────────────────────────────────────────────── */}
+      {/* ── Radial vignette — keeps terminal text legible over the scene ── */}
       <div
         className="absolute inset-0 z-[1] pointer-events-none"
         style={{
@@ -162,7 +301,6 @@ export default function HeroSection() {
           transition={{ duration: 1, delay: 0.3, ease: [0.16, 1, 0.3, 1] }}
         >
           <div className="hud-border rounded-sm p-6 bg-black/40 backdrop-blur-md">
-            {/* Window chrome */}
             <div className="flex items-center gap-2 mb-5 pb-4 border-b border-muted-2">
               <div className="w-2 h-2 rounded-full bg-muted" />
               <div className="w-2 h-2 rounded-full bg-muted" />
