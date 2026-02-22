@@ -192,9 +192,9 @@ export default function HeroSection() {
       <div
         className="absolute bottom-0 left-0 right-0 z-[1] pointer-events-none"
         style={{
-          height: "65%",
+          height: "22%",
           background:
-            "linear-gradient(to bottom, transparent 0%, rgba(0,0,0,0.75) 40%, #000000 70%)",
+            "linear-gradient(to bottom, transparent 0%, rgba(0,0,0,0.85) 60%, #000000 100%)",
         }}
       />
 
