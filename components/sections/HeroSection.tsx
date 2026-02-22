@@ -130,7 +130,7 @@ export default function HeroSection() {
               WebkitBackdropFilter:
                 "blur(32px) saturate(180%) brightness(0.85)",
               border: "1px solid rgba(255,255,255,0.07)",
-              borderRadius: "2px",
+              borderRadius: "16px",
               boxShadow: [
                 /* top edge — light catching glass */
                 "inset 0 1.5px 0 rgba(255,255,255,0.13)",
