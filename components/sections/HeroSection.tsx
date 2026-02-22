@@ -190,7 +190,7 @@ export default function HeroSection() {
 
       {/* ── Bottom fade — seamless dissolve into the black sections below ── */}
       <div
-        className="absolute bottom-0 left-0 right-0 z-[3] pointer-events-none"
+        className="absolute bottom-0 left-0 right-0 z-[1] pointer-events-none"
         style={{
           height: "65%",
           background:
