@@ -13,7 +13,10 @@ const UnicornScene = dynamic(
   { ssr: false, loading: () => null }
 );
 
-const UNICORN_PROJECT_ID = "4spOUVtR0qgdSv9wMwPH";
+// Prefer the env var so this can be swapped without a code change.
+// Fallback to the literal so the Vercel build works even if the var isn't set.
+const UNICORN_PROJECT_ID =
+  process.env.NEXT_PUBLIC_UNICORN_SCENE_ID ?? "4spOUVtR0qgdSv9wMwPH";
 
 // Scroll → Unicorn Studio variable binding
 // The scene exposes a data layer variable "scrollY" (0..1)
@@ -86,6 +89,18 @@ export default function HeroSection({ scrollProgress }: HeroSectionProps) {
             lazyLoad={false}
             className="w-full h-full"
             onLoad={onSceneLoad}
+            onError={(err) => {
+              // In development, surface the real SDK error so it's diagnosable.
+              // In production the scene simply doesn't render; the void-black
+              // background remains and the rest of the hero stays intact.
+              if (process.env.NODE_ENV !== "production") {
+                console.warn("[UnicornScene] failed to load:", err.message);
+              }
+            }}
+            // A transparent placeholder replaces the SDK's built-in pink error
+            // card (showPlaceholderOnError defaults to true). If the scene fetch
+            // fails the hero background just stays void-black — no broken UI.
+            placeholder={<div aria-hidden="true" style={{ display: "none" }} />}
             altText="Living Vessel — interactive generative scene"
           />
         )}
