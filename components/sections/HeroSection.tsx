@@ -122,7 +122,32 @@ export default function HeroSection() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 1, delay: 0.3, ease: [0.16, 1, 0.3, 1] }}
         >
-          <div className="hud-border rounded-sm p-6 bg-black/40 backdrop-blur-md">
+          <div
+            style={{
+              background:
+                "linear-gradient(135deg, rgba(18,18,18,0.82) 0%, rgba(6,6,6,0.75) 100%)",
+              backdropFilter: "blur(32px) saturate(180%) brightness(0.85)",
+              WebkitBackdropFilter:
+                "blur(32px) saturate(180%) brightness(0.85)",
+              border: "1px solid rgba(255,255,255,0.07)",
+              borderRadius: "2px",
+              boxShadow: [
+                /* top edge — light catching glass */
+                "inset 0 1.5px 0 rgba(255,255,255,0.13)",
+                /* left edge — primary light refraction */
+                "inset 1.5px 0 0 rgba(255,255,255,0.10)",
+                /* right edge — warm scene-light spill */
+                "inset -1px 0 0 rgba(255,200,100,0.07)",
+                /* bottom edge — shadow */
+                "inset 0 -1px 0 rgba(0,0,0,0.4)",
+                /* outer ambient */
+                "0 0 0 1px rgba(255,255,255,0.03)",
+                "0 24px 56px rgba(0,0,0,0.85)",
+                "0 4px 16px rgba(0,0,0,0.6)",
+              ].join(", "),
+            }}
+            className="p-6"
+          >
             <div className="flex items-center gap-2 mb-5 pb-4 border-b border-muted-2">
               <div className="w-2 h-2 rounded-full bg-muted" />
               <div className="w-2 h-2 rounded-full bg-muted" />

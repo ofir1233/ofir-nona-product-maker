@@ -12,8 +12,8 @@ interface Line {
 const LINES: Line[] = [
   { prefix: "> ", text: "PRODUCT_MAKER.init()", delay: 800, color: "text-accent" },
   { prefix: "", text: "", delay: 400 },
-  { prefix: "// ", text: "Title: Product Maker", delay: 200, color: "text-muted" },
-  { prefix: "// ", text: "Role:  Lead Designer @ Hear.ai", delay: 100, color: "text-muted" },
+  { prefix: "// ", text: "Title: Product Maker", delay: 200, color: "text-[#909090]" },
+  { prefix: "// ", text: "Role:  Lead Designer @ Hear.ai", delay: 100, color: "text-[#909090]" },
   { prefix: "", text: "", delay: 300 },
   { prefix: ">> ", text: "mission.load()", delay: 200, color: "text-accent" },
   {
