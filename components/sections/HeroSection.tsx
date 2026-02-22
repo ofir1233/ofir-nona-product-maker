@@ -249,14 +249,6 @@ export default function HeroSection() {
       rafRef.current = requestAnimationFrame(() => {
         rafRef.current = null;
         dataRef.current?.updateVariable?.("scrollY", scrollRef.current);
-        // Fade the canvas out as the user scrolls into the logic layers.
-        // Full opacity at 0 % scroll → fully gone at ~45 % scroll.
-        // Pure DOM write — no React state, no re-render.
-        if (canvasRef.current) {
-          canvasRef.current.style.opacity = String(
-            Math.max(0, 1 - scrollRef.current * 2.2)
-          );
-        }
       });
     };
 
@@ -285,19 +277,12 @@ export default function HeroSection() {
       {isMounted && (
         <div
           ref={canvasRef}
-          className="absolute inset-0 z-0 w-full h-full"
+          className="absolute inset-0 w-full h-full"
           aria-hidden="true"
           style={{
+            zIndex: -1,
             pointerEvents: "none",
-            // Screen blend: the scene's dark/black areas become transparent,
-            // coloured light and particles glow out of the void naturally.
-            mixBlendMode: "screen",
-            // Bottom fade: scene breathes at the top, dissolves into the
-            // structured grid sections below — no JS, no repaints.
-            maskImage:
-              "linear-gradient(to bottom, black 50%, transparent 92%)",
-            WebkitMaskImage:
-              "linear-gradient(to bottom, black 50%, transparent 92%)",
+            opacity: 1,
           }}
         />
       )}
