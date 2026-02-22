@@ -5,9 +5,11 @@ import { motion } from "framer-motion";
 import dynamic from "next/dynamic";
 import TerminalText from "@/components/ui/TerminalText";
 
-// Unicorn Studio is browser-only — SSR disabled
+// Unicorn Studio is browser-only — SSR disabled.
+// next/dynamic requires the promise to resolve to a module shape { default: Component }.
 const UnicornScene = dynamic(
-  () => import("unicornstudio-react/next").then((m) => m.UnicornScene),
+  () =>
+    import("unicornstudio-react/next").then((m) => ({ default: m.UnicornScene })),
   { ssr: false, loading: () => null }
 );
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useMemo } from "react";
+import { useRef, useMemo, useEffect } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 
@@ -156,17 +156,16 @@ export default function NeshmatDaat({ scrollProgress }: NeshmatDaatProps) {
   const mouseRef = useRef(new THREE.Vector2(0, 0));
   const targetMouseRef = useRef(new THREE.Vector2(0, 0));
 
-  useMemo(() => {
+  // useEffect — correct hook for DOM side-effects with cleanup
+  useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       targetMouseRef.current.set(
         (e.clientX / window.innerWidth) * 2 - 1,
         -((e.clientY / window.innerHeight) * 2 - 1)
       );
     };
-    if (typeof window !== "undefined") {
-      window.addEventListener("mousemove", handleMouseMove);
-      return () => window.removeEventListener("mousemove", handleMouseMove);
-    }
+    window.addEventListener("mousemove", handleMouseMove, { passive: true });
+    return () => window.removeEventListener("mousemove", handleMouseMove);
   }, []);
 
   const uniforms = useMemo(

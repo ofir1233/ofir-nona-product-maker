@@ -1,25 +1,25 @@
 "use client";
 
 import { useScroll, useMotionValueEvent } from "framer-motion";
-import { useState, useRef } from "react";
+import { useState } from "react";
 import dynamic from "next/dynamic";
 import SmoothScrollProvider from "@/components/providers/SmoothScrollProvider";
 import HeroSection from "@/components/sections/HeroSection";
 import ExtractionSection from "@/components/sections/ExtractionSection";
 import BlueprintSection from "@/components/sections/BlueprintSection";
 import HUDNav from "@/components/ui/HUDNav";
+import ErrorBoundary from "@/components/ui/ErrorBoundary";
 
-// R3F canvas for ShatterGrid — client only
+// R3F canvas — browser + WebGL only
 const Scene = dynamic(() => import("@/components/canvas/Scene"), {
   ssr: false,
   loading: () => null,
 });
 
 export default function Home() {
-  const mainRef = useRef<HTMLElement>(null);
   const [scrollProgress, setScrollProgress] = useState(0);
 
-  // Track normalized scroll progress across the full page
+  // Track normalized scroll progress (0→1) across the full page height
   const { scrollYProgress } = useScroll();
 
   useMotionValueEvent(scrollYProgress, "change", (v) => {
@@ -28,21 +28,30 @@ export default function Home() {
 
   return (
     <SmoothScrollProvider>
-      {/* R3F ShatterGrid canvas — fixed behind extraction/blueprint sections */}
-      <Scene scrollProgress={scrollProgress} />
+      {/*
+       * R3F canvas — fixed, full-screen, pointer-events-none.
+       * ErrorBoundary: if WebGL is unavailable or a shader compile fails,
+       * the rest of the page continues to render.
+       */}
+      <ErrorBoundary label="R3F Scene">
+        <Scene scrollProgress={scrollProgress} />
+      </ErrorBoundary>
 
-      {/* HUD navigation */}
+      {/* Fixed HUD nav */}
       <HUDNav />
 
       {/* Scrollable content */}
-      <main ref={mainRef} className="relative" style={{ zIndex: 1 }}>
-        {/* Hero: Unicorn Studio scene as full background */}
-        <HeroSection scrollProgress={scrollProgress} />
+      <main className="relative" style={{ zIndex: 1 }}>
+        {/*
+         * Hero: Unicorn Studio scene as full background.
+         * ErrorBoundary: if the WebGL scene or SDK fails to initialise,
+         * the terminal text and page structure remain visible.
+         */}
+        <ErrorBoundary label="Hero UnicornScene">
+          <HeroSection scrollProgress={scrollProgress} />
+        </ErrorBoundary>
 
-        {/* Extraction: Designer → Maker + ShatterGrid overlay */}
         <ExtractionSection />
-
-        {/* Blueprint: Projects + Logic Toggle */}
         <BlueprintSection />
       </main>
     </SmoothScrollProvider>
