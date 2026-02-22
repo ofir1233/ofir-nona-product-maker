@@ -48,7 +48,7 @@ export default function Home() {
          * the terminal text and page structure remain visible.
          */}
         <ErrorBoundary label="Hero UnicornScene">
-          <HeroSection scrollProgress={scrollProgress} />
+          <HeroSection />
         </ErrorBoundary>
 
         <ExtractionSection />

@@ -6,62 +6,95 @@ import dynamic from "next/dynamic";
 import TerminalText from "@/components/ui/TerminalText";
 
 // Unicorn Studio is browser-only — SSR disabled.
-// next/dynamic requires the promise to resolve to a module shape { default: Component }.
 const UnicornScene = dynamic(
   () =>
     import("unicornstudio-react/next").then((m) => ({ default: m.UnicornScene })),
   { ssr: false, loading: () => null }
 );
 
-// Prefer the env var so this can be swapped without a code change.
-// Fallback to the literal so the Vercel build works even if the var isn't set.
+// Prefer env var; fallback keeps the Vercel build working without it.
 const UNICORN_PROJECT_ID =
   process.env.NEXT_PUBLIC_UNICORN_SCENE_ID ?? "4spOUVtR0qgdSv9wMwPH";
 
-// Scroll → Unicorn Studio variable binding
-// The scene exposes a data layer variable "scrollY" (0..1)
-// which drives the fluid→grid shader transition.
-function useUnicornScrollBinding(scrollProgress: number) {
-  const sceneReadyRef = useRef(false);
-  const lastScrollRef = useRef(0);
+// Minimal types for the UnicornStudio JS global
+interface USScene {
+  updateVariable?: (key: string, value: number) => void;
+}
+interface USGlobal {
+  getScene?: (id: string) => USScene | null | undefined;
+}
 
-  const onSceneLoad = useCallback(() => {
-    sceneReadyRef.current = true;
+/**
+ * Drives the Unicorn Studio "scrollY" data-layer variable (0 → 1).
+ *
+ * Design goals:
+ *  - Zero React state updates — scroll events never trigger re-renders.
+ *  - RAF-throttled writes — at most one SDK call per animation frame (60fps).
+ *  - Race-condition safe — if the user is already scrolled when the scene
+ *    finishes loading, the current position is applied immediately.
+ */
+function useUnicornScrollBinding() {
+  const sceneRef   = useRef<USScene | null>(null);
+  const rafRef     = useRef<number | null>(null);
+  const pendingRef = useRef(0); // latest scroll (0–1); flushed on next RAF or load
+
+  // Schedule one RAF write per animation frame; skip if already queued.
+  const push = useCallback((progress: number) => {
+    pendingRef.current = progress;
+    if (!sceneRef.current?.updateVariable) return;
+    if (rafRef.current !== null) return;
+    rafRef.current = requestAnimationFrame(() => {
+      rafRef.current = null;
+      sceneRef.current?.updateVariable?.("scrollY", pendingRef.current);
+    });
   }, []);
 
-  useEffect(() => {
-    if (!sceneReadyRef.current) return;
-    if (Math.abs(scrollProgress - lastScrollRef.current) < 0.002) return;
-    lastScrollRef.current = scrollProgress;
-
+  // onLoad fires once the SDK has initialised the scene.
+  // Capture the scene reference and flush any accumulated scroll position.
+  const onSceneLoad = useCallback(() => {
     try {
-      // UnicornStudio JS API: update a named data-layer variable on the scene
-      // Variable "scrollY" is mapped inside the scene to control the
-      // fluid-motion → structured-grid transition (0 = fluid, 1 = grid).
-      const us = (window as typeof window & { UnicornStudio?: { getScene?: (id: string) => { updateVariable?: (k: string, v: number) => void } } }).UnicornStudio;
-      if (us?.getScene) {
-        const scene = us.getScene(UNICORN_PROJECT_ID);
-        scene?.updateVariable?.("scrollY", scrollProgress);
-      }
+      const us = (window as Window & { UnicornStudio?: USGlobal }).UnicornStudio;
+      const scene = us?.getScene?.(UNICORN_PROJECT_ID) ?? null;
+      sceneRef.current = scene;
+      // Fix race condition: apply whatever scroll value arrived before load.
+      scene?.updateVariable?.("scrollY", pendingRef.current);
     } catch {
-      // Silent fail — scroll binding is progressive enhancement
+      // Progressive enhancement — scroll binding failing is non-fatal.
     }
-  }, [scrollProgress]);
+  }, []);
+
+  // Passive scroll listener. No React state, no re-renders, full 60fps.
+  useEffect(() => {
+    const handleScroll = () => {
+      const scrollable =
+        document.documentElement.scrollHeight - window.innerHeight;
+      const progress =
+        scrollable > 0
+          ? Math.min(1, Math.max(0, window.scrollY / scrollable))
+          : 0;
+      push(progress);
+    };
+
+    window.addEventListener("scroll", handleScroll, { passive: true });
+
+    return () => {
+      window.removeEventListener("scroll", handleScroll);
+      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+    };
+  }, [push]);
 
   return { onSceneLoad };
 }
 
-interface HeroSectionProps {
-  scrollProgress: number;
-}
+// ─── Component ──────────────────────────────────────────────────────────────
 
-export default function HeroSection({ scrollProgress }: HeroSectionProps) {
+export default function HeroSection() {
   const [isMounted, setIsMounted] = useState(false);
-  const { onSceneLoad } = useUnicornScrollBinding(scrollProgress);
+  const { onSceneLoad } = useUnicornScrollBinding();
 
-  // Mount guard: only render UnicornScene after hydration is complete.
-  // Even with dynamic({ ssr: false }), next/script inside UnicornScene can
-  // throw during the hydration phase. This ensures it's purely client-side.
+  // Mount guard: render UnicornScene only after hydration is complete.
+  // next/script inside UnicornScene can throw during the hydration phase;
+  // this ensures it is purely client-side before it enters the tree.
   useEffect(() => {
     setIsMounted(true);
   }, []);
@@ -71,7 +104,12 @@ export default function HeroSection({ scrollProgress }: HeroSectionProps) {
       id="hero"
       className="relative min-h-screen flex items-center justify-center overflow-hidden"
     >
-      {/* ── Unicorn Studio full-bleed background ── */}
+      {/* ── Unicorn Studio full-bleed background ─────────────────────────── */}
+      {/*
+       * Absolutely fills the section (inset-0). UnicornScene inherits 100%/100%
+       * from its container so it is always fully responsive.
+       * pointer-events: none ensures it never intercepts clicks/scroll.
+       */}
       <div
         className="absolute inset-0 z-0"
         aria-hidden="true"
@@ -90,23 +128,23 @@ export default function HeroSection({ scrollProgress }: HeroSectionProps) {
             className="w-full h-full"
             onLoad={onSceneLoad}
             onError={(err) => {
-              // In development, surface the real SDK error so it's diagnosable.
+              // Surface SDK errors in dev so they are diagnosable in DevTools.
               // In production the scene simply doesn't render; the void-black
-              // background remains and the rest of the hero stays intact.
+              // background and all hero content remain fully intact.
               if (process.env.NODE_ENV !== "production") {
                 console.warn("[UnicornScene] failed to load:", err.message);
               }
             }}
-            // A transparent placeholder replaces the SDK's built-in pink error
-            // card (showPlaceholderOnError defaults to true). If the scene fetch
-            // fails the hero background just stays void-black — no broken UI.
+            // Replaces the SDK's built-in pink error card when load fails.
+            // showPlaceholderOnError defaults to true; the transparent div
+            // means failure is visually silent (void background stays).
             placeholder={<div aria-hidden="true" style={{ display: "none" }} />}
             altText="Living Vessel — interactive generative scene"
           />
         )}
       </div>
 
-      {/* ── Vignette overlay so terminal text stays legible ── */}
+      {/* ── Vignette overlay ─────────────────────────────────────────────── */}
       <div
         className="absolute inset-0 z-[1] pointer-events-none"
         style={{
@@ -115,10 +153,8 @@ export default function HeroSection({ scrollProgress }: HeroSectionProps) {
         }}
       />
 
-      {/* ── Content ── */}
-      <div
-        className="relative z-[2] w-full max-w-6xl mx-auto px-8 md:px-16 grid grid-cols-1 md:grid-cols-2 gap-16 items-center"
-      >
+      {/* ── Content ──────────────────────────────────────────────────────── */}
+      <div className="relative z-[2] w-full max-w-6xl mx-auto px-8 md:px-16 grid grid-cols-1 md:grid-cols-2 gap-16 items-center">
         {/* Terminal panel */}
         <motion.div
           initial={{ opacity: 0, y: 30 }}
@@ -153,7 +189,7 @@ export default function HeroSection({ scrollProgress }: HeroSectionProps) {
         </motion.div>
       </div>
 
-      {/* ── Footer metadata ── */}
+      {/* ── Footer metadata ──────────────────────────────────────────────── */}
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
