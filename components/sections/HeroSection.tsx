@@ -7,7 +7,7 @@ import TerminalText from "@/components/ui/TerminalText";
 // ─── Config ──────────────────────────────────────────────────────────────────
 
 const PROJECT_ID =
-  process.env.NEXT_PUBLIC_UNICORN_SCENE_ID ?? "4spOUVtR0qgdSv9wMwPH";
+  process.env.NEXT_PUBLIC_UNICORN_SCENE_ID ?? "pHiEAnP2IEksAqDgEcZH";
 
 // Versioned CDN URL — pinned to match unicornstudio-react v2.0.1-1
 const SDK_URL =
@@ -249,6 +249,14 @@ export default function HeroSection() {
       rafRef.current = requestAnimationFrame(() => {
         rafRef.current = null;
         dataRef.current?.updateVariable?.("scrollY", scrollRef.current);
+        // Fade the canvas out as the user scrolls into the logic layers.
+        // Full opacity at 0 % scroll → fully gone at ~45 % scroll.
+        // Pure DOM write — no React state, no re-render.
+        if (canvasRef.current) {
+          canvasRef.current.style.opacity = String(
+            Math.max(0, 1 - scrollRef.current * 2.2)
+          );
+        }
       });
     };
 
@@ -279,16 +287,35 @@ export default function HeroSection() {
           ref={canvasRef}
           className="absolute inset-0 z-0 w-full h-full"
           aria-hidden="true"
-          style={{ pointerEvents: "none" }}
+          style={{
+            pointerEvents: "none",
+            // Screen blend: the scene's dark/black areas become transparent,
+            // coloured light and particles glow out of the void naturally.
+            mixBlendMode: "screen",
+            // Bottom fade: scene breathes at the top, dissolves into the
+            // structured grid sections below — no JS, no repaints.
+            maskImage:
+              "linear-gradient(to bottom, black 50%, transparent 92%)",
+            WebkitMaskImage:
+              "linear-gradient(to bottom, black 50%, transparent 92%)",
+          }}
         />
       )}
 
       {/* ── Radial vignette — keeps terminal text legible over the scene ── */}
+      {/*
+       * Two layers:
+       *  1. Edge darkening (radial) — kills any bright spill around the frame.
+       *  2. Left-side shadow (linear) — creates a reading surface behind the
+       *     terminal panel regardless of the scene's colour at that point.
+       */}
       <div
         className="absolute inset-0 z-[1] pointer-events-none"
         style={{
-          background:
-            "radial-gradient(ellipse at center, transparent 30%, rgba(0,0,0,0.7) 100%)",
+          background: [
+            "radial-gradient(ellipse at center, transparent 20%, rgba(0,0,0,0.82) 100%)",
+            "linear-gradient(to right, rgba(0,0,0,0.55) 0%, transparent 55%)",
+          ].join(", "),
         }}
       />
 
