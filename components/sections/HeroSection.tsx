@@ -188,6 +188,16 @@ export default function HeroSection() {
         }}
       />
 
+      {/* ── Bottom fade — seamless dissolve into the black sections below ── */}
+      <div
+        className="absolute bottom-0 left-0 right-0 z-[1] pointer-events-none"
+        style={{
+          height: "35%",
+          background:
+            "linear-gradient(to bottom, transparent 0%, rgba(0,0,0,0.6) 50%, #000000 100%)",
+        }}
+      />
+
       {/* ── Content ──────────────────────────────────────────────────────── */}
       <div className="relative z-[2] w-full max-w-6xl mx-auto px-8 md:px-16 grid grid-cols-1 md:grid-cols-2 gap-16 items-center">
         <motion.div
