@@ -74,3 +74,10 @@ body {
 .text-glow {
   text-shadow: 0 0 20px rgba(79, 255, 176, 0.5);
 }
+
+/* Hide Unicorn Studio watermark */
+a[href*="unicorn.studio"],
+[data-us-badge],
+.unicorn-badge {
+  display: none !important;
+}
