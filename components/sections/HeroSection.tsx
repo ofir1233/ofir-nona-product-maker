@@ -6,7 +6,7 @@ import TerminalText from "@/components/ui/TerminalText";
 
 // ─── Config ──────────────────────────────────────────────────────────────────
 
-const PROJECT_ID = "pHiEAnP2IEksAqDgEcZH";
+const PROJECT_ID = "BkVV79z7AKFPARg65oXp";
 
 // Versioned CDN URL — pinned to match unicornstudio-react v2.0.1-1
 const SDK_URL =
