@@ -95,7 +95,7 @@ export default function ExtractionSection() {
             initial={{ opacity: 0 }}
             animate={headlineInView ? { opacity: 1 } : {}}
             transition={{ duration: 0.6 }}
-            className="overflow-hidden"
+            className="overflow-hidden pb-3"
           >
             <div className="flex flex-wrap items-baseline gap-x-5 gap-y-2">
               <motion.span
