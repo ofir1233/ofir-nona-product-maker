@@ -1,0 +1,76 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --void: #000000;
+  --surface: #0a0a0a;
+  --surface-2: #111111;
+  --accent: #4fffb0;
+  --accent-blue: #4fc3ff;
+  --text-primary: #e8e8e8;
+  --muted: #404040;
+  --muted-2: #2a2a2a;
+}
+
+* {
+  box-sizing: border-box;
+  padding: 0;
+  margin: 0;
+}
+
+html {
+  scroll-behavior: auto;
+}
+
+body {
+  background: var(--void);
+  color: var(--text-primary);
+  overflow-x: hidden;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 2px;
+}
+::-webkit-scrollbar-track {
+  background: var(--void);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--muted);
+}
+
+/* Selection */
+::selection {
+  background: rgba(79, 255, 176, 0.2);
+  color: var(--accent);
+}
+
+/* Terminal cursor blink */
+@keyframes terminalBlink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+.cursor-blink {
+  animation: terminalBlink 1s step-end infinite;
+}
+
+/* Thin 1px line utility */
+.line-accent {
+  border-color: rgba(79, 255, 176, 0.3);
+}
+
+/* HUD border */
+.hud-border {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* Glow effects */
+.glow-accent {
+  box-shadow: 0 0 20px rgba(79, 255, 176, 0.15);
+}
+
+.text-glow {
+  text-shadow: 0 0 20px rgba(79, 255, 176, 0.5);
+}
