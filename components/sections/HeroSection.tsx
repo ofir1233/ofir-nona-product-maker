@@ -6,8 +6,7 @@ import TerminalText from "@/components/ui/TerminalText";
 
 // ─── Config ──────────────────────────────────────────────────────────────────
 
-const PROJECT_ID =
-  process.env.NEXT_PUBLIC_UNICORN_SCENE_ID ?? "pHiEAnP2IEksAqDgEcZH";
+const PROJECT_ID = "pHiEAnP2IEksAqDgEcZH";
 
 // Versioned CDN URL — pinned to match unicornstudio-react v2.0.1-1
 const SDK_URL =
@@ -277,13 +276,9 @@ export default function HeroSection() {
       {isMounted && (
         <div
           ref={canvasRef}
-          className="absolute inset-0 w-full h-full"
+          className="absolute inset-0 z-0 w-full h-full"
           aria-hidden="true"
-          style={{
-            zIndex: -1,
-            pointerEvents: "none",
-            opacity: 1,
-          }}
+          style={{ pointerEvents: "none" }}
         />
       )}
 
