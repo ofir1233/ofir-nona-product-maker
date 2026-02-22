@@ -77,7 +77,12 @@ body {
 
 /* Hide Unicorn Studio watermark */
 a[href*="unicorn.studio"],
+a[href*="unicornstudio"],
 [data-us-badge],
-.unicorn-badge {
+[class*="unicorn-badge"],
+[class*="UnicornBadge"],
+[id*="unicorn-badge"] {
   display: none !important;
+  opacity: 0 !important;
+  visibility: hidden !important;
 }
